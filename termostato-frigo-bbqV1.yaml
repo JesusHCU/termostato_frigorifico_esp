@@ -1,0 +1,405 @@
+substitutions:
+  name: "Frigo BBQ"
+  # Led en D4 GPIO2 OJO Invertido. ON -> Apagado OFF-> Encendido
+  PinReleCompresor: D4
+  PinReleVentilador: D3
+
+  Pin_Btn_Up: D8
+  Pin_Btn_Down: D6
+  Pin_Puerta: D5
+
+  PinDallasTemp: D7 #Nunca D0 ni D8
+
+  Temp_Minima: "-5"
+  Temp_Maxima: "20"
+  ip_address: "192.168.0.32"
+
+globals:    
+  - id: temp_deseada
+    type: float
+    restore_value: yes
+    initial_value: "5"  
+
+  
+  
+#  cooler: switch.fan_window_master
+#  fan_speed: number.fan_window_speed
+#  temperature_sensor: input_number.fake_one_temp
+  
+  
+esphome:
+  name: termostato-frigo-bbq 
+  platform: ESP8266
+  board: d1_mini
+
+# No funciona con:
+#esp32:
+#  board: wemos_d1_mini32
+  
+wifi:
+  networks:
+  #  - ssid: !secret wifi_ssid
+  #    password: !secret wifi_password      
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+      
+    - ssid: !secret wifi_ssid2
+      password: !secret wifi_password2
+  
+  manual_ip:
+    # Set this to the IP of the ESP
+    static_ip: $ip_address
+    # Set this to the IP address of the router. Often ends with .1
+    gateway: 192.168.1.1
+    # The subnet of the network. 255.255.255.0 works for most home networks.
+    subnet: 255.255.252.0
+
+  ap:
+    ssid: "TerFri"
+    password: "eb4hcuEsp"
+
+captive_portal:
+# para que de web si no se conecta a la wifi
+
+
+web_server:
+  port: 80
+
+# Enable logging
+logger:
+# Enable Home Assistant API
+#  logs:
+#    component: ERROR
+
+api:
+  encryption:
+    key: "QG4CFKYeYZEzF0T7QvN8bymiL177+mRvqa/2pKuubl4="
+
+ota:
+  - platform: esphome
+#  password: !secret ota_pass
+
+i2c:
+  # sda: D1
+  # scl: D2
+  # scan: False
+  # swap for Wemos D1 Mini
+  sda: D2
+  scl: D1
+  scan: True
+  id: bus_a
+  frequency: 400kHz
+  
+display:
+  - platform: ssd1306_i2c
+    model: "SH1106 128x64"
+    update_interval: 1s
+    #model: "SSD1306 128x64"
+    #address: 0x3C
+    id: my_display
+    lambda: |-
+      // ESP_LOGI("Compresor", id(ReleCompresor).state,);
+      // ESP_LOGI("Puerta", id(puerta).state);
+      // ESP_LOGI("WiFi", "Buena, 󰤥");
+
+      int x, y, c;
+      // Dibujo un cuadrado
+      it.line(0, 0, 126, 0);
+      it.line(0, 62, 126, 62);
+      it.line(0, 0, 0, 62);
+      it.line(126, 0, 126, 62);
+
+      /* WiFi Signal Strenght */
+      x = 125, y = 17;
+      if(id(wifi_sgnl).has_state()) {
+        if (id(wifi_sgnl).state >= -50) {
+            //ESP_LOGI("WiFi", "Excelente, 󰤨");
+            it.print(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰤨");
+        } else if (id(wifi_sgnl).state  >= -60) {
+            //ESP_LOGI("WiFi", "Buena, 󰤥");
+            it.print(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰤥");
+        } else if (id(wifi_sgnl).state  >= -67) {
+            //ESP_LOGI("WiFi", "Regular, 󰤢");
+            it.print(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰤢");
+        } else if (id(wifi_sgnl).state  >= -70) {
+            //ESP_LOGI("WiFi", "Pobre, 󰤟");
+            it.print(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰤟");
+        } else {
+            //ESP_LOGI("WiFi", "Mala, 󰤫");
+            it.print(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰤫");
+        }
+      }
+      else {
+        it.printf(x, y, id(wifi_font), TextAlign::BOTTOM_RIGHT, "󰖪"); // No Conectado; // mdi-wifi-off
+      } 
+
+      // current_temperature
+      //ESP_LOGI("current_temperature= ", "%.1f°",id(this_thermostat).current_temperature);
+      x= 98, y = 30;
+      it.print(x, y-2, id(icon_font_15), TextAlign::BOTTOM_LEFT, "󰔏"); // mdi-thermometer
+      it.printf(x+2, y, id(arial20), TextAlign::BOTTOM_RIGHT, "Frigo:%.1f°", id(this_thermostat).current_temperature);
+
+      // target_temperature
+      //ESP_LOGI("target_temperature= ", "%.1f°",id(this_thermostat).target_temperature);
+      x= 81,y = 58;
+      it.print(x, y, id(icon_font_15), TextAlign::BOTTOM_LEFT, "󰔏"); // mdi-thermometer
+      it.printf(x+2, y, id(arial15), TextAlign::BOTTOM_RIGHT, "Destin:%.1f°", id(this_thermostat).target_temperature);
+      
+      // Compresor
+      x= 125, y = 61;
+      if (id(ReleCompresor).state) {
+        it.print(x, y, id(icon_font_20), TextAlign::BOTTOM_RIGHT, "󱀚"); // mdi-car-turbocharger
+        //ESP_LOGI("Compresor= ", "Encendido"); 
+        } 
+      else {
+        it.print(x, y, id(icon_font_20), TextAlign::BOTTOM_RIGHT, "󰼩"); // mdi-snowflake-alert
+        //ESP_LOGI("Compresor= ", "Apagado");
+        }
+      
+
+      // Puerta
+      x= 125, y = 31;
+      if (id(puerta).state) {
+        it.print(x, y, id(icon_font_15), TextAlign::BOTTOM_RIGHT, "󰠜"); // mdi-door-open
+        //ESP_LOGI("Puerta= ", "Abierta");
+         } 
+      else {
+        it.print(x, y, id(icon_font_15), TextAlign::BOTTOM_RIGHT, "󰠚"); // mdi-door
+        //ESP_LOGI("Puerta= ", "Cerrada");
+        }
+      
+
+
+
+font:
+  - file: "fonts/arial.ttf"
+    id: arial15
+    size: 15
+    glyphs: '!"%()+,-_.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz'
+
+  - file: "fonts/arial.ttf"
+    id: arial20
+    size: 20
+    glyphs: '!"%()+,-_.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz'
+
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: icon_font_15
+    size: 15
+    glyphs: [
+      '󰠜', # mdi-door-open
+      '󰠚', # mdi-door
+      '󰔏', # mdi-thermometer
+      '󰸁', # mdi-thermometer-alert
+      '󰸂', # mdi-thermometer-chevron-down
+      '󰸃', # mdi-thermometer-chevron-up
+      '󱀚', # mdi-car-turbocharger
+      '󰁪', # mdi-autorenew
+      '󰜗', # mdi-snowflake
+      '󰼩', # mdi-snowflake-alert
+      '󱆲', # mdi-fridge-alert-outline
+      '󰊏'] # mdi-fridge-outline
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: icon_font_20
+    size: 20
+    glyphs: [
+      '󰔏', # mdi-thermometer
+      '󰸁', # mdi-thermometer-alert
+      '󰸂', # mdi-thermometer-chevron-down
+      '󰸃', # mdi-thermometer-chevron-up
+      '󱀚', # mdi-car-turbocharger
+      '󰁪', # mdi-autorenew
+      '󰜗', # mdi-snowflake
+      '󰼩', # mdi-snowflake-alert
+      '󱆲', # mdi-fridge-alert-outline
+      '󰊏'] # mdi-fridge-outline
+
+  - file: 'fonts/materialdesignicons-webfont.ttf' 
+    id: wifi_font
+    size: 15
+    glyphs: [
+      # Wifi
+      '󰖪', # mdi-wifi-off
+      '󰖩', # mdi-wifi
+      '󰤟', # mdi-wifi-strength-1
+      '󰤢', # mdi-wifi-strength-2
+      '󰤥', # mdi-wifi-strength-3
+      '󰤨', # mdi-wifi-strength-4
+      '󰤫', # mdi-wifi-strength-alert-outline
+      ]
+
+# Config Dallas
+one_wire:
+  - platform: gpio
+    pin: $PinDallasTemp
+  
+
+
+climate:
+  - platform: thermostat
+    name: Termostato $name 
+    id: this_thermostat
+    min_cooling_off_time: 10s
+    min_cooling_run_time: 10s
+    min_idle_time: 10s
+    sensor: temp1_frigo
+  #  sensor: temp_frigo_media
+    
+    cool_action:
+      - switch.turn_on: ReleCompresor
+    idle_action:
+      - switch.turn_off: ReleCompresor
+    
+    visual:
+      min_temperature: $Temp_Minima
+      max_temperature: $Temp_Maxima
+
+    
+    default_preset: Frio
+#    on_boot_restore_from: memory              ### Use this to "Restore From Memeory" (A Saved State) OR...
+    preset:
+      - name: Reposo
+        mode: cool
+        default_target_temperature_high: 10 °C
+      - name: Frio
+        mode: cool
+        default_target_temperature_high: 5 °C
+      - name: Muy Frio
+        mode: cool
+        default_target_temperature_high: 2 °C
+      - name: SUPER Frio
+        mode: cool
+        default_target_temperature_high: 0 °C
+
+    
+    preset_change:
+      - logger.log: Preset has been changed!
+      - lambda: |-
+         id(temp_deseada) = id(this_thermostat).target_temperature_high;
+
+
+
+
+#############################################
+
+sensor:
+###########################################
+###########################################
+#  - platform: template
+#    name: "FakeTemp"
+#    id: temp_fake
+#    lambda: |-
+#       return $Temp_Dummy;
+      
+  - platform: dallas_temp
+    address: 0xde011562cc49ff28  # Estropeado?
+    # address: 0x10011562b0bcff28    Test
+    name: $name Temp Interior
+    id: temp1_frigo
+    filters:
+      - offset: 0.0
+  - platform: dallas_temp
+    address: 0x50011561175bff28
+    name: $name Temp Enfriador
+    id: temp2_frigo
+    filters:
+      - offset: 0.0
+
+
+  - platform: template
+    name: $name Temp Media
+    id: temp_frigo_media
+    lambda: |-
+      return ((id(temp1_frigo).state + id(temp2_frigo).state)/2);
+
+
+###########################################       
+
+
+
+
+###########################################
+  - platform: wifi_signal
+    id: wifi_sgnl
+    name: $name - Sensor WiFi Signal
+    update_interval: 60s
+###########################################
+###########################################
+switch:
+  - platform: gpio
+    name: $name Compresor
+    id: ReleCompresor
+    pin: 
+      number: $PinReleCompresor
+      inverted: true
+
+  - platform: gpio
+    name: $name Ventilador Interior
+    id: ReleVentilador
+    pin: $PinReleVentilador
+    inverted: False
+
+  - platform: restart
+    name: "Restart FrigoBBQ"
+
+
+###########################################
+###########################################
+
+
+
+binary_sensor:
+  - platform: gpio
+    pin: 
+      number: $Pin_Puerta
+      mode: INPUT_PULLUP
+      inverted: False
+    id: puerta
+    name: $name Puerta
+    device_class: door
+    on_press:
+      then:
+        - switch.turn_off: ReleVentilador
+    on_release:
+      then:
+        - switch.turn_on: ReleVentilador
+
+
+  - platform: gpio
+    id: boton_up
+    pin:
+      number: $Pin_Btn_Up
+  #    mode: INPUT_PULLUP
+ #     inverted: True
+    name: "Button_UP"
+    on_press:
+       - lambda: |
+          if (id(temp_deseada) >= $Temp_Maxima) {
+            id(temp_deseada) = $Temp_Minima;
+          } else {
+            id(temp_deseada) += 0.5;
+          }
+       - climate.control:
+            id: this_thermostat
+            target_temperature: !lambda "return id(this_thermostat).target_temperature = id(temp_deseada);"
+
+  - platform: gpio
+    id: boton_down
+    pin:
+      number: $Pin_Btn_Down
+      mode: INPUT_PULLUP
+      inverted: True
+    name: "Button_DOWN"
+    on_press:
+       - lambda: |
+          if (id(temp_deseada) <= $Temp_Minima) {
+            id(temp_deseada) = $Temp_Maxima;
+          } else {
+            id(temp_deseada) -= 0.5;
+          }
+       - climate.control:
+            id: this_thermostat
+            target_temperature: !lambda "return id(this_thermostat).target_temperature = id(temp_deseada);"
+
+###########################################
+###########################################
+
